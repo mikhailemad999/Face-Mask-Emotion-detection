@@ -1,0 +1,36 @@
+# ═══════════════════════════════════════════════════════
+# ML Pipeline Requirements — Face Mask & Emotion Detection
+# Install: pip install -r requirements_ml.txt
+# GPU: CUDA 12.x + cuDNN 8.x (RTX 2060)
+# ═══════════════════════════════════════════════════════
+
+# ── Core ML ─────────────────────────────────────────────
+torch==2.2.2+cu121
+torchvision==0.17.2+cu121
+torchaudio==2.2.2+cu121
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+# ── Computer Vision ──────────────────────────────────────
+opencv-python==4.10.0.84
+Pillow==10.4.0
+mtcnn==0.1.1
+
+# ── Data / EDA ───────────────────────────────────────────
+numpy==1.26.4
+pandas==2.2.2
+scipy==1.13.1
+scikit-learn==1.5.1
+imbalanced-learn==0.12.3
+
+# ── Visualization ────────────────────────────────────────
+matplotlib==3.9.2
+seaborn==0.13.2
+plotly==5.24.0
+
+# ── Model export / inference ──────────────────────────────
+onnx==1.16.2
+onnxruntime-gpu==1.18.1
+
+# ── Utilities ────────────────────────────────────────────
+tqdm==4.66.5
+python-dotenv==1.0.1

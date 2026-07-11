@@ -1,0 +1,336 @@
+import React, { useRef, useEffect, useState, useCallback } from 'react'
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
+
+/**
+ * LiveCameraPage — real-time webcam detection via polling
+ * Captures frames from webcam → sends to API → draws overlay bounding boxes
+ */
+export default function LiveCameraPage() {
+  const videoRef    = useRef(null)
+  const canvasRef   = useRef(null)
+  const intervalRef = useRef(null)
+
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [detections,  setDetections]  = useState([])
+  const [fps,         setFps]         = useState(0)
+  const [error,       setError]       = useState(null)
+  const [sessionId]                   = useState(() => crypto.randomUUID())
+
+  const FRAME_INTERVAL_MS = 300   // ~3fps inference
+  const EMOTION_COLORS = {
+    angry:'#FF3366', disgust:'#FF6B35', fear:'#FFB700',
+    happy:'#00FFB3', neutral:'#94A3B8', sad:'#7B61FF', surprise:'#E040FB',
+  }
+
+  // ── Start webcam ───────────────────────────────────────────────────────────
+  const startCamera = useCallback(async () => {
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' },
+        audio: false,
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+        setIsStreaming(true)
+        startInferenceLoop()
+      }
+    } catch (err) {
+      setError(`Camera error: ${err.message}`)
+    }
+  }, [])
+
+  // ── Stop webcam ────────────────────────────────────────────────────────────
+  const stopCamera = useCallback(() => {
+    clearInterval(intervalRef.current)
+    if (videoRef.current?.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(t => t.stop())
+      videoRef.current.srcObject = null
+    }
+    setIsStreaming(false)
+    setDetections([])
+    // Clear canvas
+    const ctx = canvasRef.current?.getContext('2d')
+    ctx?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
+  }, [])
+
+  // ── Inference loop ─────────────────────────────────────────────────────────
+  const startInferenceLoop = () => {
+    let lastTime = Date.now()
+    intervalRef.current = setInterval(async () => {
+      if (!videoRef.current || !canvasRef.current) return
+
+      const video  = videoRef.current
+      const canvas = document.createElement('canvas')
+      canvas.width  = video.videoWidth  || 640
+      canvas.height = video.videoHeight || 480
+      const ctx2 = canvas.getContext('2d')
+      ctx2.drawImage(video, 0, 0)
+      const b64 = canvas.toDataURL('image/jpeg', 0.7)
+
+      try {
+        const res = await fetch(`${API_BASE}/detect/frame/`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ frame: b64, session_id: sessionId }),
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        const preds = data.result?.predictions || []
+        setDetections(preds)
+        drawOverlay(preds, canvas.width, canvas.height)
+
+        const now = Date.now()
+        setFps(Math.round(1000 / (now - lastTime)))
+        lastTime = now
+      } catch (e) {
+        // silently skip failed frames
+      }
+    }, FRAME_INTERVAL_MS)
+  }
+
+  // ── Draw SVG/canvas overlay ────────────────────────────────────────────────
+  const drawOverlay = (preds, w, h) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.width  = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, w, h)
+
+    preds.forEach(pred => {
+      const { x, y, w: bw, h: bh } = pred.bbox
+      const isMask  = pred.mask.label === 'with_mask'
+      const color   = isMask ? '#00FFB3' : '#FF3366'
+      const emotion = pred.emotion.label
+
+      // Bounding box
+      ctx.strokeStyle = color
+      ctx.lineWidth   = 2
+      ctx.shadowColor = color
+      ctx.shadowBlur  = 8
+      ctx.strokeRect(x, y, bw, bh)
+      ctx.shadowBlur  = 0
+
+      // Corner accents (L-shapes)
+      const cs = 14
+      ctx.lineWidth = 3
+      ;[
+        [x,      y,      cs, 0,   0,  cs],
+        [x+bw,   y,      -cs, 0,  0,  cs],
+        [x,      y+bh,   cs, 0,   0, -cs],
+        [x+bw,   y+bh,   -cs, 0,  0, -cs],
+      ].forEach(([cx, cy, dx1, dy1, dx2, dy2]) => {
+        ctx.beginPath()
+        ctx.moveTo(cx + dx1, cy + dy1)
+        ctx.lineTo(cx, cy)
+        ctx.lineTo(cx + dx2, cy + dy2)
+        ctx.stroke()
+      })
+
+      // Label background
+      const label = `${isMask ? '✓ MASK' : '✗ NO MASK'} | ${emotion}`
+      ctx.font = 'bold 11px JetBrains Mono, monospace'
+      const tw = ctx.measureText(label).width
+      ctx.fillStyle = color + 'CC'
+      ctx.fillRect(x, y - 22, tw + 12, 20)
+      ctx.fillStyle = '#060B18'
+      ctx.fillText(label, x + 6, y - 7)
+    })
+  }
+
+  useEffect(() => () => stopCamera(), [])
+
+  return (
+    <div className="main">
+      <div className="container" style={{ paddingBottom: '48px' }}>
+        {/* Header */}
+        <div className="page-header animate-fade-in-up">
+          <div className="page-header__eyebrow">// live_detection.stream</div>
+          <h1 className="page-header__title">
+            Live <span>Camera</span> Detection
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', maxWidth: '520px' }}>
+            Real-time face mask and emotion detection from your webcam.
+            Inference runs every 300ms on the server GPU.
+          </p>
+        </div>
+
+        <div className="grid grid--2" style={{ gap: '24px', alignItems: 'start' }}>
+          {/* Camera feed */}
+          <div>
+            <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+              {/* Status bar */}
+              <div style={{
+                padding: '12px 16px',
+                background: 'var(--bg-panel)',
+                borderBottom: '1px solid var(--border-subtle)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span
+                    className={`status-dot ${isStreaming ? 'status-dot--online' : 'status-dot--offline'}`}
+                  />
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {isStreaming ? 'STREAMING' : 'CAMERA OFF'}
+                  </span>
+                </div>
+                <div style={{ color: 'var(--text-muted)' }}>
+                  {isStreaming && <span style={{ color: 'var(--accent)' }}>{fps} FPS</span>}
+                </div>
+              </div>
+
+              {/* Video + overlay */}
+              <div style={{ position: 'relative', background: '#000', minHeight: '320px' }}>
+                <video
+                  ref={videoRef}
+                  muted
+                  playsInline
+                  style={{
+                    width: '100%', display: 'block',
+                    opacity: isStreaming ? 1 : 0.3,
+                    transition: 'opacity 0.3s',
+                  }}
+                  aria-label="Webcam feed"
+                />
+                <canvas
+                  ref={canvasRef}
+                  style={{
+                    position: 'absolute', top: 0, left: 0,
+                    width: '100%', height: '100%',
+                    pointerEvents: 'none',
+                  }}
+                  aria-hidden="true"
+                />
+                {!isStreaming && (
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexDirection: 'column', gap: '12px',
+                  }}>
+                    <div style={{ fontSize: '3rem', opacity: 0.4 }}>📷</div>
+                    <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)',
+                      fontSize: '0.85rem' }}>
+                      Camera not active
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Controls */}
+              <div style={{ padding: '16px', display: 'flex', gap: '12px' }}>
+                <button
+                  className={`btn ${isStreaming ? 'btn--danger' : 'btn--primary'} w-full`}
+                  style={{ justifyContent: 'center' }}
+                  onClick={isStreaming ? stopCamera : startCamera}
+                  id={isStreaming ? 'stop-camera-button' : 'start-camera-button'}
+                >
+                  {isStreaming ? '⏹ Stop Camera' : '▶ Start Camera'}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="card card--red mt-4 animate-fade-in-up">
+                <div style={{ color: 'var(--red)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
+                  {error}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Live predictions panel */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="card animate-fade-in-up">
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: 'var(--text-muted)', marginBottom: '16px',
+              }}>
+                LIVE_PREDICTIONS ({detections.length} face{detections.length !== 1 ? 's' : ''})
+              </div>
+
+              {detections.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)',
+                  fontSize: '0.85rem', textAlign: 'center', padding: '32px' }}>
+                  {isStreaming ? 'Scanning for faces…' : 'Start camera to begin detection'}
+                </div>
+              ) : (
+                detections.map((pred, i) => (
+                  <div key={i} style={{
+                    background: 'var(--bg-panel)',
+                    borderRadius: '8px', padding: '16px',
+                    marginBottom: '12px',
+                    border: '1px solid var(--border-subtle)',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between',
+                      marginBottom: '12px' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+                        color: 'var(--text-muted)' }}>
+                        Face #{i + 1}
+                      </span>
+                      <span className={`detection-badge ${
+                        pred.mask.label === 'with_mask'
+                          ? 'detection-badge--mask' : 'detection-badge--no-mask'
+                      }`} style={{ fontSize: '0.65rem' }}>
+                        {pred.mask.label === 'with_mask' ? '✓ MASK' : '✗ NO MASK'}
+                      </span>
+                    </div>
+
+                    {/* Emotion mini-bars */}
+                    {Object.entries(pred.emotion.all_probs || {})
+                      .sort(([,a],[,b]) => b-a)
+                      .slice(0, 3)
+                      .map(([emo, prob]) => (
+                        <div key={emo} style={{ marginBottom: '6px' }}>
+                          <div style={{
+                            display: 'flex', justifyContent: 'space-between',
+                            fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                            color: 'var(--text-secondary)', marginBottom: '3px',
+                          }}>
+                            <span style={{ textTransform: 'capitalize' }}>{emo}</span>
+                            <span>{Math.round(prob * 100)}%</span>
+                          </div>
+                          <div style={{
+                            height: '4px', background: 'var(--bg-deep)',
+                            borderRadius: '2px', overflow: 'hidden',
+                          }}>
+                            <div style={{
+                              height: '100%',
+                              width: `${prob * 100}%`,
+                              background: EMOTION_COLORS[emo] || 'var(--accent)',
+                              borderRadius: '2px',
+                              transition: 'width 200ms ease',
+                            }} />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Session info */}
+            <div className="card card--glass animate-fade-in-up">
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
+                letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: 'var(--text-muted)', marginBottom: '12px' }}>
+                SESSION_INFO
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
+                color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+                <div className="flex justify-between" style={{ marginBottom: '6px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>session_id</span>
+                </div>
+                <div style={{ color: 'var(--accent)', fontSize: '0.7rem' }}>{sessionId}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
