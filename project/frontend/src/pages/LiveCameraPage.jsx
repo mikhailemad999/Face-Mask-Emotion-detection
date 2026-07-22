@@ -3,8 +3,10 @@ import React, { useRef, useEffect, useState, useCallback } from 'react'
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 /**
- * LiveCameraPage — real-time webcam detection via polling
- * Captures frames from webcam → sends to API → draws overlay bounding boxes
+ * LiveCameraPage — Real-time webcam face mask & emotion detection page component.
+ * Captures video frames from browser webcam, posts to API, and draws animated bounding box overlays.
+ *
+ * @returns {JSX.Element} Rendered webcam streaming page component.
  */
 export default function LiveCameraPage() {
   const videoRef    = useRef(null)
@@ -23,26 +25,57 @@ export default function LiveCameraPage() {
     happy:'#00FFB3', neutral:'#94A3B8', sad:'#7B61FF', surprise:'#E040FB',
   }
 
-  // ── Start webcam ───────────────────────────────────────────────────────────
+  /**
+   * Request webcam stream access and start video element playback.
+   * Includes progressive fallback constraints and clear error handling for device locks.
+   */
   const startCamera = useCallback(async () => {
     setError(null)
+    
+    // Helper to stop any existing media stream tracks on element
+    if (videoRef.current?.srcObject) {
+      const existing = videoRef.current.srcObject
+      if (existing && 'getTracks' in existing) {
+        existing.getTracks().forEach(t => t.stop())
+      }
+      videoRef.current.srcObject = null
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: 'user' },
-        audio: false,
-      })
-      if (videoRef.current) {
+      let stream = null
+      try {
+        // Try preferred 640x480 resolution
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false,
+        })
+      } catch (firstErr) {
+        // Fallback to basic video constraint if ideal constraints fail
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      }
+
+      if (videoRef.current && stream) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
         setIsStreaming(true)
         startInferenceLoop()
       }
     } catch (err) {
-      setError(`Camera error: ${err.message}`)
+      if (err.name === 'NotReadableError' || err.name === 'TrackStartError' || err.message?.includes('in use') || err.message?.includes('Could not start')) {
+        setError('CAMERA_DEVICE_IN_USE: Another application (Zoom, Teams, Skype, or another browser tab) is currently using your webcam. Please close the other application or tab and click Start Camera again.')
+      } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('CAMERA_PERMISSION_DENIED: Access to webcam was blocked. Please enable camera permissions in your browser address bar settings.')
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setError('NO_CAMERA_FOUND: No camera device detected on your system. Please plug in a webcam.')
+      } else {
+        setError(`Camera error: ${err.message}`)
+      }
     }
   }, [])
 
-  // ── Stop webcam ────────────────────────────────────────────────────────────
+  /**
+   * Stop active webcam stream, clear interval timer, and reset overlay canvas.
+   */
   const stopCamera = useCallback(() => {
     clearInterval(intervalRef.current)
     if (videoRef.current?.srcObject) {
@@ -56,7 +89,9 @@ export default function LiveCameraPage() {
     ctx?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
   }, [])
 
-  // ── Inference loop ─────────────────────────────────────────────────────────
+  /**
+   * Start recurring frame capture loop sending base64 frame data to /api/detect/frame/.
+   */
   const startInferenceLoop = () => {
     let lastTime = Date.now()
     intervalRef.current = setInterval(async () => {
@@ -91,7 +126,13 @@ export default function LiveCameraPage() {
     }, FRAME_INTERVAL_MS)
   }
 
-  // ── Draw SVG/canvas overlay ────────────────────────────────────────────────
+  /**
+   * Render bounding box overlays and text labels on the HTML5 canvas.
+   *
+   * @param {Array<Object>} preds - Array of face prediction objects containing bboxes and classification scores.
+   * @param {number} w - Canvas pixel width.
+   * @param {number} h - Canvas pixel height.
+   */
   const drawOverlay = (preds, w, h) => {
     const canvas = canvasRef.current
     if (!canvas) return

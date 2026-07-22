@@ -2,6 +2,11 @@ import React, { useEffect, useState } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
+/**
+ * ModelsPage — Model registry page detailing MobileNetV2 and EfficientNet-B0 architecture specs, metrics, and active version info.
+ *
+ * @returns {JSX.Element} Rendered model registry info page component.
+ */
 export default function ModelsPage() {
   const [info, setInfo] = useState(null)
   const [loading, setLoading] = useState(true)

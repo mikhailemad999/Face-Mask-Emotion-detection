@@ -3,12 +3,20 @@ import StatsCard from '../components/StatsCard'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
+/**
+ * DashboardPage — Main application overview dashboard rendering real-time system metrics and recent detection logs.
+ *
+ * @returns {JSX.Element} Rendered overview dashboard page component.
+ */
 export default function DashboardPage() {
   const [history, setHistory] = useState([])
   const [stats,   setStats]   = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    /**
+     * Fetch detection history logs from backend DRF API and calculate summary stats.
+     */
     const fetchData = async () => {
       try {
         const [histRes] = await Promise.all([

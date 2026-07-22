@@ -9,6 +9,11 @@ const NAV_ITEMS = [
   { path: '/models',    label: 'Models' },
 ]
 
+/**
+ * Navbar — Top navigation header component with responsive links and status indicator.
+ *
+ * @returns {JSX.Element} Rendered site navigation bar.
+ */
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false)
 

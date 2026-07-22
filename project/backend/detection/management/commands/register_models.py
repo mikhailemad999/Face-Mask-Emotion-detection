@@ -5,9 +5,17 @@ from django.conf import settings
 from detection.models import ModelVersion
 
 class Command(BaseCommand):
+    """Django management command to register ML models into SQL database."""
     help = "Register newly trained models and metrics into SQL Server registry"
 
     def handle(self, *args, **options):
+        """
+        Read JSON metrics from ML models directory and create active ModelVersion database records.
+
+        Args:
+            *args: Positional arguments.
+            **options: Named command options.
+        """
         # 1. Mask Model
         mask_metrics_path = settings.ML_MODELS_DIR / "mask_metrics.json"
         if mask_metrics_path.exists():

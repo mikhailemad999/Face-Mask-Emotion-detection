@@ -5,8 +5,9 @@ import EmotionMeter from '../components/EmotionMeter'
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 /**
- * AnalyzePage — Image upload + single-image analysis
- * POST /api/detect/image/
+ * AnalyzePage — Single image upload and deep inference analysis page component.
+ *
+ * @returns {JSX.Element} Rendered image analysis workspace page component.
  */
 export default function AnalyzePage() {
   const [file,        setFile]        = useState(null)
@@ -15,6 +16,11 @@ export default function AnalyzePage() {
   const [result,      setResult]      = useState(null)
   const [error,       setError]       = useState(null)
 
+  /**
+   * Handle image selection callback from UploadZone component.
+   * @param {File} f - Selected image file object.
+   * @param {string} url - Browser object URL preview string.
+   */
   const handleImageSelected = useCallback((f, url) => {
     setFile(f)
     setPreviewUrl(url)
@@ -22,6 +28,9 @@ export default function AnalyzePage() {
     setError(null)
   }, [])
 
+  /**
+   * Post selected image file to backend DRF API (/api/detect/image/) for detection.
+   */
   const handleAnalyze = async () => {
     if (!file) return
     setIsLoading(true)

@@ -32,6 +32,12 @@ class DetectionLog(models.Model):
         ]
 
     def __str__(self):
+        """
+        Return string representation of the detection log entry.
+
+        Returns:
+            str: Formatted string containing timestamp, mask, and emotion predictions.
+        """
         return f"[{self.timestamp}] mask={self.mask_result} emotion={self.emotion_result}"
 
 
@@ -55,4 +61,10 @@ class ModelVersion(models.Model):
         ordering = ["-trained_at"]
 
     def __str__(self):
+        """
+        Return string representation of the model version entry.
+
+        Returns:
+            str: Formatted string containing model type, version string, and active flag status.
+        """
         return f"{self.model_type} v{self.version} (active={self.is_active})"

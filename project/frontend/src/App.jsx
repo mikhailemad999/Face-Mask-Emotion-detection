@@ -8,6 +8,11 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import ModelsPage    from './pages/ModelsPage'
 import './index.css'
 
+/**
+ * App — Root React Component configuring BrowserRouter and application routes.
+ *
+ * @returns {JSX.Element} Rendered application layout with navigation bar and page routes.
+ */
 function App() {
   return (
     <BrowserRouter>

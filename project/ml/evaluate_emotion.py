@@ -41,15 +41,40 @@ CFG = {
 }
 
 class EmotionDataset(Dataset):
+    """PyTorch Dataset wrapper for facial emotion images and integer targets."""
+
     def __init__(self, filepaths, labels, transform=None):
+        """
+        Initialize the emotion dataset.
+
+        Args:
+            filepaths (Sequence[str]): Array or list of image file paths.
+            labels (Sequence[int]): Array or list of target emotion class integers.
+            transform (Optional[Callable]): PyTorch torchvision transform pipeline to apply to images.
+        """
         self.filepaths = filepaths
         self.labels    = labels
         self.transform = transform
 
     def __len__(self):
+        """
+        Return the total number of samples in the dataset.
+
+        Returns:
+            int: Number of image samples.
+        """
         return len(self.filepaths)
 
     def __getitem__(self, idx):
+        """
+        Fetch and transform a single image-label pair by index.
+
+        Args:
+            idx (int): Sample index.
+
+        Returns:
+            Tuple[Tensor, Tensor]: Transformed PyTorch image tensor and long label tensor.
+        """
         fp    = self.filepaths[idx]
         label = self.labels[idx]
         try:
@@ -71,6 +96,13 @@ val_transform = transforms.Compose([
 
 # Load data
 def main():
+    """
+    Execute full emotion recognition evaluation workflow:
+    1. Load cleaned dataset metadata CSV
+    2. Split hold-out test set
+    3. Evaluate EfficientNet-B0 PyTorch model predictions
+    4. Export metrics JSON, confusion matrix heatmap, and ONNX model binary
+    """
     csv_path = OUT_DIR / "df_all_cleaned.csv"
     if not csv_path.exists():
         print(f"[ERROR] Cleaned dataset CSV not found at: {csv_path}")

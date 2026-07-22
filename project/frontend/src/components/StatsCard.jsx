@@ -1,9 +1,5 @@
 import React from 'react'
 
-/**
- * StatsCard — a glassmorphism stat display card
- * Props: label, value, sub, color ('accent'|'red'|'purple'|'yellow')
- */
 const COLOR_MAP = {
   accent: 'var(--accent)',
   red:    'var(--red)',
@@ -11,6 +7,17 @@ const COLOR_MAP = {
   yellow: 'var(--yellow)',
 }
 
+/**
+ * StatsCard — Glassmorphism metric card with top neon accent border.
+ *
+ * @param {Object} props - Component properties.
+ * @param {string} props.label - Metric card title label.
+ * @param {string|number} props.value - Metric value.
+ * @param {string} [props.sub] - Optional secondary descriptive caption text.
+ * @param {'accent'|'red'|'purple'|'yellow'} [props.color='accent'] - Theme accent color key.
+ * @param {string} [props.icon] - Optional emoji/icon string to display at top.
+ * @returns {JSX.Element} Rendered stat display card component.
+ */
 export default function StatsCard({ label, value, sub, color = 'accent', icon }) {
   const clr = COLOR_MAP[color] || COLOR_MAP.accent
 

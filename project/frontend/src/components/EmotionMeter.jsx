@@ -1,12 +1,5 @@
 import React from 'react'
 
-/**
- * EmotionMeter — animated confidence bars for all 7 emotion classes
- * Props:
- *   allProbs:  { angry: 0.12, happy: 0.73, ... }
- *   topLabel:  'happy'
- */
-
 const EMOTION_COLORS = {
   angry:   '#FF3366',
   disgust: '#FF6B35',
@@ -22,6 +15,14 @@ const EMOTION_EMOJIS = {
   happy: '😊', neutral: '😐', sad: '😢', surprise: '😲',
 }
 
+/**
+ * EmotionMeter — Animated confidence bar visualizer for 7 facial emotion classes.
+ *
+ * @param {Object} props - Component properties.
+ * @param {Object.<string, number>} [props.allProbs={}] - Map of emotion labels to confidence probabilities (0.0 to 1.0).
+ * @param {string} [props.topLabel=''] - Top predicted emotion class label string.
+ * @returns {JSX.Element} Emotion probability visualization bars component.
+ */
 export default function EmotionMeter({ allProbs = {}, topLabel = '' }) {
   const sorted = Object.entries(allProbs).sort(([, a], [, b]) => b - a)
 

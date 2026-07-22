@@ -39,7 +39,12 @@ logger.info(f"[DetectionEngine] Running on: {device}")
 
 
 def _build_mask_model() -> nn.Module:
-    """Rebuild MobileNetV2 architecture and load weights."""
+    """
+    Rebuild MobileNetV2 architecture for binary face mask classification.
+    
+    Returns:
+        nn.Module: PyTorch MobileNetV2 model initialized with custom classifier head.
+    """
     model = models.mobilenet_v2(weights=None)
     model.classifier = nn.Sequential(
         nn.Dropout(0.3),
@@ -52,7 +57,12 @@ def _build_mask_model() -> nn.Module:
 
 
 def _build_emotion_model() -> nn.Module:
-    """Rebuild EfficientNet-B0 architecture and load weights."""
+    """
+    Rebuild EfficientNet-B0 architecture for 7-class facial emotion recognition.
+    
+    Returns:
+        nn.Module: PyTorch EfficientNet-B0 model initialized with custom 7-class linear classifier.
+    """
     model = models.efficientnet_b0(weights=None)
     num_features = model.classifier[1].in_features
     model.classifier = nn.Sequential(
@@ -68,21 +78,28 @@ def _build_emotion_model() -> nn.Module:
 
 class DetectionEngine:
     """
-    Singleton detection pipeline:
-    1. Face detection (Haar Cascade / MTCNN)
-    2. Mask classification (MobileNetV2)
-    3. Emotion classification (EfficientNet-B0)
+    Singleton detection pipeline executing end-to-end inference:
+    1. Face detection via multi-cascade OpenCV Haar Cascades
+    2. Mask status classification via MobileNetV2
+    3. Facial emotion recognition via EfficientNet-B0
     """
 
     _instance = None
 
     def __new__(cls):
+        """
+        Enforce single instance creation across application threads.
+        
+        Returns:
+            DetectionEngine: Singleton instance of the engine.
+        """
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
+        """Initialize the detection engine singleton, loading PyTorch models and OpenCV detectors."""
         if self._initialized:
             return
         self._initialized = True
@@ -91,7 +108,10 @@ class DetectionEngine:
         self._load_face_detector()
 
     def _load_models(self):
-        """Load PyTorch models from disk."""
+        """
+        Load trained PyTorch weights for mask and emotion models from configured disk paths.
+        Falls back gracefully with warnings if model files are missing.
+        """
         logger.info("[DetectionEngine] Loading ML models…")
 
         # Mask model
@@ -119,7 +139,10 @@ class DetectionEngine:
         self.emotion_model.eval()
 
     def _load_face_detector(self):
-        """Load OpenCV Haar Cascade face detectors (default + fallback alt + profile)."""
+        """
+        Load OpenCV Haar Cascade face detectors including default, alt2, and profile cascades
+        to ensure robust face localization across varying lighting and angles.
+        """
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         self.face_cascade = cv2.CascadeClassifier(cascade_path)
         
@@ -136,7 +159,15 @@ class DetectionEngine:
     # ─────────────────────────────────────────────────────────────────────────
 
     def detect_from_pil(self, pil_image: Image.Image) -> Dict:
-        """Run the full pipeline on a PIL image."""
+        """
+        Run face detection, mask classification, and emotion recognition on a PIL Image instance.
+
+        Args:
+            pil_image (Image.Image): Input PIL Image object.
+
+        Returns:
+            Dict: Inference results containing detected face count, bounding boxes, predictions, processing time, and execution device.
+        """
         start = time.perf_counter()
         img_rgb = np.array(pil_image.convert("RGB"))
         img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
@@ -163,12 +194,28 @@ class DetectionEngine:
         }
 
     def detect_from_bytes(self, image_bytes: bytes) -> Dict:
-        """Run pipeline on raw image bytes."""
+        """
+        Run inference pipeline on raw image byte data (e.g. from HTTP file uploads).
+
+        Args:
+            image_bytes (bytes): Binary contents of an uploaded image file.
+
+        Returns:
+            Dict: Inference result dictionary containing predictions and performance metrics.
+        """
         pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         return self.detect_from_pil(pil_image)
 
     def detect_from_base64(self, b64_string: str) -> Dict:
-        """Run pipeline on base64-encoded image string."""
+        """
+        Run inference pipeline on base64-encoded image string (e.g. from webcam canvas data URLs).
+
+        Args:
+            b64_string (str): Base64-encoded image string (with optional data header).
+
+        Returns:
+            Dict: Inference result dictionary.
+        """
         if b64_string.startswith("data:image"):
             b64_string = b64_string.split(",", 1)[1]
         raw_bytes = base64.b64decode(b64_string)
@@ -179,7 +226,15 @@ class DetectionEngine:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _detect_faces(self, img_bgr: np.ndarray) -> list:
-        """Detect faces using multi-cascade and adaptive fallbacks."""
+        """
+        Detect face bounding boxes using layered multi-cascade classifiers with adaptive parameter fallbacks.
+
+        Args:
+            img_bgr (np.ndarray): Input BGR OpenCV image array.
+
+        Returns:
+            list: List of bounding box tuples `(x, y, w, h)`.
+        """
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         
         # Try 1: Default cascade (strict, high precision)
@@ -214,7 +269,15 @@ class DetectionEngine:
 
     @torch.no_grad()
     def _classify_mask(self, face_pil: Image.Image) -> Dict:
-        """Binary mask classification."""
+        """
+        Perform binary mask classification on a cropped face image.
+
+        Args:
+            face_pil (Image.Image): Cropped PIL image of a detected face.
+
+        Returns:
+            Dict: Classification result with predicted label ('with_mask' / 'without_mask') and confidence probabilities.
+        """
         tensor = _transform(face_pil.convert("RGB")).unsqueeze(0).to(device)
         logit  = self.mask_model(tensor).squeeze()
         prob   = torch.sigmoid(logit).item()
@@ -228,7 +291,15 @@ class DetectionEngine:
 
     @torch.no_grad()
     def _classify_emotion(self, face_pil: Image.Image) -> Dict:
-        """7-class emotion classification."""
+        """
+        Perform 7-class emotion recognition on a cropped face image.
+
+        Args:
+            face_pil (Image.Image): Cropped PIL image of a detected face.
+
+        Returns:
+            Dict: Classification result with top predicted emotion label, confidence score, and probability distribution across all 7 emotions.
+        """
         # Convert to grayscale first, then RGB to match the training data distribution (FER2013-like)
         tensor = _transform(face_pil.convert("L").convert("RGB")).unsqueeze(0).to(device)
         logits = self.emotion_model(tensor)

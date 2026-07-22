@@ -30,8 +30,13 @@ except Exception as e:
 
 def save_prediction_to_mongo(payload: Dict[str, Any]) -> str:
     """
-    Save a full detection prediction to MongoDB.
-    Returns the inserted document _id as string, or "" on failure.
+    Save a full detection prediction document to the MongoDB 'predictions' collection.
+
+    Args:
+        payload (Dict[str, Any]): Dictionary containing session_id, timestamp, image_name, source, and full_result payload.
+
+    Returns:
+        str: Inserted document ObjectId string on success, or empty string "" if MongoDB is unavailable or fails.
     """
     if not MONGO_AVAILABLE:
         return ""
@@ -46,8 +51,10 @@ def save_prediction_to_mongo(payload: Dict[str, Any]) -> str:
 
 def get_analytics_summary() -> Dict:
     """
-    Aggregate detection statistics from MongoDB.
-    Returns: total_predictions, class_distributions, avg_confidence
+    Aggregate detection statistics from the MongoDB database using aggregation pipelines.
+
+    Returns:
+        Dict: Analytical statistics containing total prediction count, 24h count, mask distribution, and emotion distribution.
     """
     if not MONGO_AVAILABLE:
         return {"error": "MongoDB unavailable"}
@@ -93,7 +100,15 @@ def get_analytics_summary() -> Dict:
 
 
 def get_recent_predictions(limit: int = 50) -> list:
-    """Return the most recent predictions from MongoDB."""
+    """
+    Retrieve the most recent detection predictions from the MongoDB 'predictions' collection.
+
+    Args:
+        limit (int): Maximum number of recent predictions to fetch. Default is 50.
+
+    Returns:
+        list: List of formatted prediction dictionaries.
+    """
     if not MONGO_AVAILABLE:
         return []
     try:

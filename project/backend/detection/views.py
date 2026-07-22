@@ -33,7 +33,16 @@ from .mongo_service import save_prediction_to_mongo
 @api_view(["POST"])
 @parser_classes([MultiPartParser, FormParser])
 def detect_image(request):
-    """Upload image → run detection pipeline → return JSON + log to DBs."""
+    """
+    Handle multipart image upload, run face/mask/emotion detection pipeline,
+    and persist results asynchronously to SQL Server and MongoDB databases.
+
+    Args:
+        request (Request): Django REST framework HTTP request containing 'image' file in request.FILES.
+
+    Returns:
+        Response: DRF Response with status success/error, detection payload, and persisted log ID.
+    """
     if "image" not in request.FILES:
         return Response({"error": "No image file provided. Use field name 'image'"},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -100,7 +109,15 @@ def detect_image(request):
 @api_view(["POST"])
 @parser_classes([JSONParser])
 def detect_frame(request):
-    """Base64 webcam frame → detection → response."""
+    """
+    Handle real-time base64 webcam frame inference requests.
+
+    Args:
+        request (Request): DRF HTTP JSON request containing 'frame' base64 string and optional 'session_id'.
+
+    Returns:
+        Response: DRF Response with status and detection predictions array.
+    """
     frame_b64 = request.data.get("frame")
     if not frame_b64:
         return Response({"error": "No 'frame' field in request body."},
@@ -131,7 +148,15 @@ def detect_frame(request):
 @extend_schema(summary="Get paginated detection history from SQL Server")
 @api_view(["GET"])
 def detection_history(request):
-    """Return paginated detection logs from SQL Server."""
+    """
+    Query paginated detection log entries stored in SQL Server with optional filtering.
+
+    Args:
+        request (Request): DRF GET request with query params for 'page', 'page_size', 'source', 'mask', 'emotion'.
+
+    Returns:
+        Response: JSON payload with total record count, page numbers, and serialized detection logs.
+    """
     logs = DetectionLog.objects.all().order_by("-timestamp")
 
     # Simple filter support
@@ -164,7 +189,15 @@ def detection_history(request):
 @extend_schema(summary="Get active model version info")
 @api_view(["GET"])
 def model_info(request):
-    """Return active model versions with metrics."""
+    """
+    Retrieve active model version metadata, evaluation metrics, and GPU execution system status.
+
+    Args:
+        request (Request): DRF GET request.
+
+    Returns:
+        Response: JSON payload detailing active model versions, GPU device name, and PyTorch CUDA availability.
+    """
     active_models = ModelVersion.objects.filter(is_active=True)
     serializer = ModelVersionSerializer(active_models, many=True)
     return Response({

@@ -128,8 +128,27 @@ df_mask = df_mask.dropna(subset=["label_int"])
 print(f"Mask dataset: {len(df_mask)} images")
 print(df_mask["label"].value_counts())
 
-filepaths = df_mask["filepath"].values
-labels    = df_mask["label_int"].values.astype(int)
+raw_filepaths = df_mask["filepath"].values
+labels        = df_mask["label_int"].values.astype(int)
+filenames     = df_mask["filename"].values
+label_names   = df_mask["label"].values
+
+resolved_filepaths = []
+missing_count = 0
+for i, fp_str in enumerate(raw_filepaths):
+    fp = Path(fp_str)
+    if not fp.exists():
+        alternative_path = PROJECT_ROOT / label_names[i] / filenames[i]
+        if alternative_path.exists():
+            fp = alternative_path
+        else:
+            missing_count += 1
+    resolved_filepaths.append(str(fp))
+
+if missing_count > 0:
+    print(f"[WARNING] {missing_count}/{len(raw_filepaths)} mask images were not found on disk.")
+
+filepaths = np.array(resolved_filepaths)
 
 # Train/Val/Test split
 X_trainval, X_test, y_trainval, y_test = train_test_split(

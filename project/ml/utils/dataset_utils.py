@@ -29,10 +29,22 @@ MASK_CLASSES    = ["with_mask", "without_mask"]
 
 
 def get_emotion_dataset_root() -> Path:
+    """
+    Get the filesystem path pointing to the top-level directory containing emotion class folders.
+
+    Returns:
+        Path: Absolute pathlib.Path to the workspace root directory.
+    """
     return BASE_DIR  # each emotion class folder lives at top level
 
 
 def get_mask_dataset_root() -> Path:
+    """
+    Get the filesystem path pointing to the top-level directory containing mask class folders.
+
+    Returns:
+        Path: Absolute pathlib.Path to the workspace root directory.
+    """
     return BASE_DIR
 
 
@@ -41,7 +53,16 @@ def get_mask_dataset_root() -> Path:
 # ─────────────────────────────────────────────
 
 def compute_file_hash(filepath: str, algorithm: str = "md5") -> str:
-    """Compute cryptographic hash of raw file bytes."""
+    """
+    Compute cryptographic hash of raw file bytes to identify duplicate dataset images.
+
+    Args:
+        filepath (str): Absolute or relative filesystem path to the target file.
+        algorithm (str): Hash algorithm identifier (default: "md5").
+
+    Returns:
+        str: Hexadecimal digest of the file hash.
+    """
     h = hashlib.new(algorithm)
     with open(filepath, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -55,8 +76,13 @@ def compute_file_hash(filepath: str, algorithm: str = "md5") -> str:
 
 def validate_image(filepath: str) -> Dict:
     """
-    Try to open an image and return metadata.
-    Returns dict with 'valid' flag and image properties.
+    Validate image file integrity, color mode, dimensions, and file size.
+
+    Args:
+        filepath (str): Path to image file.
+
+    Returns:
+        Dict: Metadata dictionary containing validity flag, width, height, channel count, file size, color mode, and error string.
     """
     result = {
         "filepath": filepath,
@@ -99,18 +125,15 @@ def build_dataset_df(
     extensions: Tuple[str, ...] = (".jpg", ".jpeg", ".png", ".bmp"),
 ) -> pd.DataFrame:
     """
-    Walk through class folders, validate each image,
-    compute hash, and return a clean DataFrame.
+    Walk through specified class directories, validate images, compute hashes, and build a pandas DataFrame.
 
     Args:
-        class_folders: {label: folder_path}
-        dataset_name:  'emotion' | 'mask'
-        extensions:    allowed file extensions
+        class_folders (Dict[str, Path]): Map of class labels to folder paths.
+        dataset_name (str): Identifier name for the dataset ('emotion' or 'mask').
+        extensions (Tuple[str, ...]): Permitted image file extensions.
 
     Returns:
-        pd.DataFrame with columns:
-            filepath, label, dataset, valid, width, height,
-            channels, file_size_bytes, color_mode, file_hash, error
+        pd.DataFrame: Structured DataFrame containing image metadata, validity flags, and hashes.
     """
     records: List[Dict] = []
 
@@ -144,14 +167,24 @@ def build_dataset_df(
 
 
 def build_emotion_df() -> pd.DataFrame:
-    """Build DataFrame for the 7-class emotion dataset."""
+    """
+    Build structured pandas DataFrame for the 7-class emotion recognition dataset.
+
+    Returns:
+        pd.DataFrame: Emotion dataset metadata DataFrame.
+    """
     root = get_emotion_dataset_root()
     class_folders = {cls: root / cls for cls in EMOTION_CLASSES}
     return build_dataset_df(class_folders, dataset_name="emotion")
 
 
 def build_mask_df() -> pd.DataFrame:
-    """Build DataFrame for the binary mask dataset."""
+    """
+    Build structured pandas DataFrame for the binary face mask dataset.
+
+    Returns:
+        pd.DataFrame: Mask dataset metadata DataFrame.
+    """
     root = get_mask_dataset_root()
     class_folders = {cls: root / cls for cls in MASK_CLASSES}
     return build_dataset_df(class_folders, dataset_name="mask")
@@ -167,10 +200,15 @@ def load_image_cv2(
     grayscale: bool = False,
 ) -> Optional[np.ndarray]:
     """
-    Load image using OpenCV. Returns numpy array or None on failure.
+    Load image using OpenCV, with optional spatial resizing and grayscale conversion.
+
     Args:
-        target_size: (width, height) for resize. None = no resize.
-        grayscale:   convert to single-channel grayscale.
+        filepath (str): Path to image file.
+        target_size (Optional[Tuple[int, int]]): Target (width, height) tuple for resizing.
+        grayscale (bool): Whether to load image as single-channel grayscale.
+
+    Returns:
+        Optional[np.ndarray]: Loaded OpenCV image numpy array, or None if unreadable.
     """
     flag = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
     img = cv2.imread(filepath, flag)
@@ -186,7 +224,17 @@ def load_image_pil(
     target_size: Optional[Tuple[int, int]] = None,
     mode: str = "RGB",
 ) -> Optional[Image.Image]:
-    """Load image using PIL and optionally resize + convert mode."""
+    """
+    Load image using PIL Image, with optional spatial resizing and mode conversion.
+
+    Args:
+        filepath (str): Path to image file.
+        target_size (Optional[Tuple[int, int]]): Target (width, height) tuple for resizing.
+        mode (str): PIL color mode (default: "RGB").
+
+    Returns:
+        Optional[Image.Image]: PIL Image object, or None if unreadable.
+    """
     try:
         img = Image.open(filepath).convert(mode)
         if target_size:
@@ -201,7 +249,16 @@ def load_image_pil(
 # ─────────────────────────────────────────────
 
 def compute_pixel_stats(filepath: str, grayscale: bool = True) -> Dict:
-    """Compute mean, std, min, max pixel values of an image."""
+    """
+    Compute mean, standard deviation, minimum, and maximum pixel intensity values for an image.
+
+    Args:
+        filepath (str): Path to image file.
+        grayscale (bool): Convert image to grayscale prior to statistic computation.
+
+    Returns:
+        Dict: Dictionary containing 'pixel_mean', 'pixel_std', 'pixel_min', and 'pixel_max'.
+    """
     img = load_image_cv2(filepath, grayscale=grayscale)
     if img is None:
         return {}

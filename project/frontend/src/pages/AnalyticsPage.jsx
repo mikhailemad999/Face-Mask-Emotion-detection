@@ -8,6 +8,11 @@ const EMOTION_COLORS = {
 }
 const MASK_COLORS = { with_mask:'#00FFB3', without_mask:'#FF3366' }
 
+/**
+ * AnalyticsPage — Detailed analytics page showing historical prediction distribution charts and paginated logs.
+ *
+ * @returns {JSX.Element} Rendered analytics dashboard page component.
+ */
 export default function AnalyticsPage() {
   const [history, setHistory] = useState([])
   const [page,    setPage]    = useState(1)
@@ -33,6 +38,13 @@ export default function AnalyticsPage() {
     return acc
   }, {})
 
+  /**
+   * BarChart — Horizontal distribution bar chart visualization component.
+   * @param {Object} props - Component properties.
+   * @param {Object.<string, number>} props.data - Map of labels to count values.
+   * @param {Object.<string, string>} props.colorMap - Map of labels to color strings.
+   * @param {string} props.title - Chart section title.
+   */
   const BarChart = ({ data, colorMap, title }) => {
     const max = Math.max(...Object.values(data), 1)
     return (
