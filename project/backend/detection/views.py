@@ -226,7 +226,14 @@ def detect_batch(request):
     Returns:
         Response: JSON payload with batch execution metrics, emotion distribution breakdown, mask compliance, and file predictions.
     """
-    files = request.FILES.getlist("images") or request.FILES.getlist("files")
+    try:
+        files = request.FILES.getlist("images") or request.FILES.getlist("files")
+    except Exception as exc:
+        return Response(
+            {"error": f"File payload processing error: {str(exc)}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if not files:
         return Response({"error": "No image files provided. Use field name 'images'"},
                         status=status.HTTP_400_BAD_REQUEST)

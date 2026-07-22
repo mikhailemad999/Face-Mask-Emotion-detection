@@ -117,6 +117,11 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
 }
 
+# Batch folder upload limits (allow up to 5,000 files in a single folder upload)
+DATA_UPLOAD_MAX_NUMBER_FILES = 5000
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600   # 100 MB max request payload
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CORS
 # ─────────────────────────────────────────────────────────────────────────────

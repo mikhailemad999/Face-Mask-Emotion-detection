@@ -33,6 +33,8 @@ export default function BatchAnalyzePage() {
   const [error, setError]                 = useState(null)
   const [searchFilter, setSearchFilter]   = useState('')
 
+  const [progressMsg, setProgressMsg]     = useState('')
+
   const fileInputRef   = useRef(null)
   const folderInputRef = useRef(null)
 
@@ -59,7 +61,7 @@ export default function BatchAnalyzePage() {
   }
 
   /**
-   * Submit selected batch files to backend POST /api/detect/batch/
+   * Submit selected batch files in chunks to backend POST /api/detect/batch/
    */
   const handleAnalyzeBatch = async () => {
     if (!selectedFiles.length) {
@@ -69,29 +71,70 @@ export default function BatchAnalyzePage() {
 
     setLoading(true)
     setError(null)
+    setProgressMsg('')
+
+    const CHUNK_SIZE = 30
+    let totalFilesCount = selectedFiles.length
+    let totalFacesCount = 0
+    let combinedEmotionCounts = { happy: 0, sad: 0, angry: 0, disgust: 0, fear: 0, neutral: 0, surprise: 0 }
+    let combinedMaskCounts    = { with_mask: 0, without_mask: 0 }
+    let combinedFileResults   = []
 
     try {
-      const formData = new FormData()
-      selectedFiles.forEach(file => {
-        formData.append('images', file)
-      })
+      for (let i = 0; i < selectedFiles.length; i += CHUNK_SIZE) {
+        const chunk = selectedFiles.slice(i, i + CHUNK_SIZE)
+        const currentEnd = Math.min(i + CHUNK_SIZE, selectedFiles.length)
+        setProgressMsg(`Analyzing images ${i + 1} to ${currentEnd} of ${selectedFiles.length}...`)
 
-      const res = await fetch('/api/detect/batch/', {
-        method: 'POST',
-        body: formData,
-      })
+        const formData = new FormData()
+        chunk.forEach(file => {
+          formData.append('images', file)
+        })
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || `Server returned error status ${res.status}`)
+        const res = await fetch('/api/detect/batch/', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || `Server returned error status ${res.status}`)
+        }
+
+        const data = await res.json()
+        totalFacesCount += (data.total_faces || 0)
+
+        Object.entries(data.emotion_counts || {}).forEach(([k, v]) => {
+          if (combinedEmotionCounts[k] !== undefined) combinedEmotionCounts[k] += v
+        })
+
+        Object.entries(data.mask_counts || {}).forEach(([k, v]) => {
+          if (combinedMaskCounts[k] !== undefined) combinedMaskCounts[k] += v
+        })
+
+        if (data.file_results) {
+          combinedFileResults.push(...data.file_results)
+        }
       }
 
-      const data = await res.json()
-      setResult(data)
+      const dominantEmotion = totalFacesCount > 0
+        ? Object.keys(combinedEmotionCounts).reduce((a, b) => combinedEmotionCounts[a] > combinedEmotionCounts[b] ? a : b)
+        : 'N/A'
+
+      setResult({
+        status: 'success',
+        total_files: totalFilesCount,
+        total_faces: totalFacesCount,
+        dominant_emotion: dominantEmotion,
+        emotion_counts: combinedEmotionCounts,
+        mask_counts: combinedMaskCounts,
+        file_results: combinedFileResults,
+      })
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
+      setProgressMsg('')
     }
   }
 
@@ -232,7 +275,7 @@ export default function BatchAnalyzePage() {
                 disabled={loading}
                 id="run-batch-analysis-btn"
               >
-                {loading ? '⚡ Analyzing Batch...' : '▶ Run Batch Analysis'}
+                {loading ? (progressMsg || '⚡ Analyzing Batch...') : '▶ Run Batch Analysis'}
               </button>
             </div>
           )}
