@@ -143,6 +143,61 @@ export default function LiveCameraPage() {
   }, [])
 
   /**
+   * Start synthetic demo video stream mode when physical webcam is locked by another OS application.
+   */
+  const startDemoStream = useCallback(() => {
+    setError(null)
+    stopCamera()
+
+    const demoCanvas = document.createElement('canvas')
+    demoCanvas.width = 640
+    demoCanvas.height = 480
+    const ctx = demoCanvas.getContext('2d')
+
+    let angle = 0
+    const animInterval = setInterval(() => {
+      angle += 0.05
+      // Render animated background & face oval
+      ctx.fillStyle = '#0B1120'
+      ctx.fillRect(0, 0, 640, 480)
+
+      // Draw stylized face shape
+      const faceX = 320 + Math.sin(angle) * 30
+      const faceY = 220 + Math.cos(angle * 0.8) * 15
+
+      ctx.fillStyle = '#F5D0C5'
+      ctx.beginPath()
+      ctx.ellipse(faceX, faceY, 90, 120, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Draw eyes
+      ctx.fillStyle = '#1E293B'
+      ctx.beginPath()
+      ctx.arc(faceX - 35, faceY - 25, 10, 0, Math.PI * 2)
+      ctx.arc(faceX + 35, faceY - 25, 10, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Draw mask (cyan mask)
+      ctx.fillStyle = '#00F0FF'
+      ctx.beginPath()
+      ctx.roundRect(faceX - 60, faceY + 5, 120, 75, 12)
+      ctx.fill()
+
+      ctx.strokeStyle = '#FFFFFF'
+      ctx.lineWidth = 3
+      ctx.strokeRect(faceX - 60, faceY + 5, 120, 75)
+    }, 50)
+
+    const demoStream = demoCanvas.captureStream(30)
+    if (videoRef.current) {
+      videoRef.current.srcObject = demoStream
+      videoRef.current.play().catch(() => {})
+      setIsStreaming(true)
+      startInferenceLoop()
+    }
+  }, [stopCamera])
+
+  /**
    * Start recurring frame capture loop sending base64 frame data to /api/detect/frame/.
    */
   const startInferenceLoop = () => {
@@ -372,6 +427,14 @@ export default function LiveCameraPage() {
                     }}
                   >
                     🔄 Release & Retry Camera
+                  </button>
+
+                  <button
+                    className="btn btn--primary"
+                    style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                    onClick={startDemoStream}
+                  >
+                    🎬 Test Demo Stream Mode
                   </button>
                 </div>
               </div>
