@@ -205,3 +205,110 @@ def model_info(request):
         "cuda_available": __import__("torch").cuda.is_available(),
         "models":      serializer.data,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/detect/batch/
+# ─────────────────────────────────────────────────────────────────────────────
+@extend_schema(
+    summary="Detect mask and emotion across a batch/folder of uploaded images",
+    description="Upload multiple image files from a folder. Returns aggregated emotion breakdowns and per-file predictions.",
+)
+@api_view(["POST"])
+@parser_classes([MultiPartParser, FormParser])
+def detect_batch(request):
+    """
+    Process a batch or folder of image files, aggregating emotion statistics and mask compliance counts.
+
+    Args:
+        request (Request): DRF POST request containing list of image files in request.FILES.getlist('images').
+
+    Returns:
+        Response: JSON payload with batch execution metrics, emotion distribution breakdown, mask compliance, and file predictions.
+    """
+    files = request.FILES.getlist("images") or request.FILES.getlist("files")
+    if not files:
+        return Response({"error": "No image files provided. Use field name 'images'"},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    allowed_exts = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+    valid_files = [f for f in files if f.name.lower().endswith(allowed_exts)]
+
+    if not valid_files:
+        return Response({"error": "No valid image files (JPG, PNG, WebP) found in batch upload."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    batch_session_id = str(uuid.uuid4())
+    start_total = datetime.utcnow()
+
+    emotion_counts = {"happy": 0, "sad": 0, "angry": 0, "disgust": 0, "fear": 0, "neutral": 0, "surprise": 0}
+    mask_counts    = {"with_mask": 0, "without_mask": 0}
+    total_faces    = 0
+    file_results   = []
+
+    for img_file in valid_files:
+        try:
+            image_bytes = img_file.read()
+            result = engine.detect_from_bytes(image_bytes)
+
+            faces_in_img = result.get("faces_detected", 0)
+            total_faces += faces_in_img
+
+            top_pred = result["predictions"][0] if result["predictions"] else {}
+            top_mask    = top_pred.get("mask",    {}).get("label", "")
+            top_emotion = top_pred.get("emotion", {}).get("label", "")
+
+            # Count all face predictions in this file
+            for pred in result.get("predictions", []):
+                m_label = pred.get("mask", {}).get("label")
+                e_label = pred.get("emotion", {}).get("label")
+                if m_label in mask_counts:
+                    mask_counts[m_label] += 1
+                if e_label in emotion_counts:
+                    emotion_counts[e_label] += 1
+
+            file_results.append({
+                "filename":       img_file.name,
+                "faces_detected": faces_in_img,
+                "top_mask":       top_mask,
+                "top_emotion":    top_emotion,
+                "predictions":    result.get("predictions", []),
+                "processing_ms":  result.get("processing_time_ms", 0),
+            })
+
+            # Save summary to SQL Server
+            if top_pred:
+                try:
+                    DetectionLog.objects.create(
+                        image_name=img_file.name,
+                        faces_detected=faces_in_img,
+                        mask_result=top_mask,
+                        mask_confidence=top_pred.get("mask", {}).get("confidence"),
+                        emotion_result=top_emotion,
+                        emotion_confidence=top_pred.get("emotion", {}).get("confidence"),
+                        processing_time_ms=result.get("processing_time_ms"),
+                        source="batch",
+                    )
+                except Exception:
+                    pass
+
+        except Exception as e:
+            file_results.append({
+                "filename": img_file.name,
+                "error": str(e),
+                "faces_detected": 0,
+            })
+
+    # Determine top overall dominant emotion
+    dominant_emotion = max(emotion_counts, key=emotion_counts.get) if total_faces > 0 else "N/A"
+
+    return Response({
+        "status":            "success",
+        "batch_session_id":  batch_session_id,
+        "total_files":       len(valid_files),
+        "total_faces":       total_faces,
+        "dominant_emotion":  dominant_emotion,
+        "emotion_counts":    emotion_counts,
+        "mask_counts":       mask_counts,
+        "file_results":      file_results,
+    }, status=status.HTTP_200_OK)

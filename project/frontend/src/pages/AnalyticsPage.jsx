@@ -14,19 +14,29 @@ const MASK_COLORS = { with_mask:'#00FFB3', without_mask:'#FF3366' }
  * @returns {JSX.Element} Rendered analytics dashboard page component.
  */
 export default function AnalyticsPage() {
-  const [history, setHistory] = useState([])
-  const [page,    setPage]    = useState(1)
-  const [total,   setTotal]   = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [history,       setHistory]       = useState([])
+  const [page,          setPage]          = useState(1)
+  const [total,         setTotal]         = useState(0)
+  const [loading,       setLoading]       = useState(true)
+
+  // Filter states
+  const [sourceFilter,  setSourceFilter]  = useState('')
+  const [maskFilter,    setMaskFilter]    = useState('')
+  const [emotionFilter, setEmotionFilter] = useState('')
 
   useEffect(() => {
     setLoading(true)
-    fetch(`${API_BASE}/detect/history/?page=${page}&page_size=20`)
+    let url = `${API_BASE}/detect/history/?page=${page}&page_size=20`
+    if (sourceFilter)  url += `&source=${sourceFilter}`
+    if (maskFilter)    url += `&mask=${maskFilter}`
+    if (emotionFilter) url += `&emotion=${emotionFilter}`
+
+    fetch(url)
       .then(r => r.json())
       .then(d => { setHistory(d.results || []); setTotal(d.count || 0) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [page])
+  }, [page, sourceFilter, maskFilter, emotionFilter])
 
   // Compute distributions from loaded history
   const emotionCounts = history.reduce((acc, r) => {
@@ -107,7 +117,7 @@ export default function AnalyticsPage() {
         {/* Full history table */}
         <div className="card animate-fade-in-up">
           <div style={{ display: 'flex', justifyContent: 'space-between',
-            alignItems: 'center', marginBottom: '20px' }}>
+            alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
             <div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem',
                 letterSpacing: '0.12em', textTransform: 'uppercase',
@@ -117,6 +127,45 @@ export default function AnalyticsPage() {
               <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>
                 All Detections ({total})
               </h3>
+            </div>
+
+            {/* Filter controls */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <select
+                value={sourceFilter}
+                onChange={(e) => { setSourceFilter(e.target.value); setPage(1) }}
+                style={{ padding: '6px 12px', borderRadius: 'var(--radius-md)', background: 'var(--surface-darker)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '0.8rem' }}
+              >
+                <option value="">All Sources</option>
+                <option value="upload">Upload</option>
+                <option value="batch">Batch Folder</option>
+                <option value="live">Live Stream</option>
+              </select>
+
+              <select
+                value={maskFilter}
+                onChange={(e) => { setMaskFilter(e.target.value); setPage(1) }}
+                style={{ padding: '6px 12px', borderRadius: 'var(--radius-md)', background: 'var(--surface-darker)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '0.8rem' }}
+              >
+                <option value="">All Mask Status</option>
+                <option value="with_mask">With Mask</option>
+                <option value="without_mask">Without Mask</option>
+              </select>
+
+              <select
+                value={emotionFilter}
+                onChange={(e) => { setEmotionFilter(e.target.value); setPage(1) }}
+                style={{ padding: '6px 12px', borderRadius: 'var(--radius-md)', background: 'var(--surface-darker)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '0.8rem' }}
+              >
+                <option value="">All Emotions</option>
+                <option value="happy">Happy 😊</option>
+                <option value="sad">Sad 😢</option>
+                <option value="angry">Angry 😠</option>
+                <option value="neutral">Neutral 😐</option>
+                <option value="surprise">Surprise 😮</option>
+                <option value="fear">Fear 😱</option>
+                <option value="disgust">Disgust 🤢</option>
+              </select>
             </div>
           </div>
 

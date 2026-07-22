@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { path: '/',          label: 'Dashboard' },
   { path: '/live',      label: 'Live Camera' },
   { path: '/analyze',   label: 'Analyze Image' },
+  { path: '/batch',     label: 'Folder Batch' },
   { path: '/analytics', label: 'Analytics' },
   { path: '/models',    label: 'Models' },
 ]
