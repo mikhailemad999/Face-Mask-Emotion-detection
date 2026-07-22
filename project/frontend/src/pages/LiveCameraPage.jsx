@@ -29,9 +29,35 @@ export default function LiveCameraPage() {
    * Request webcam stream access and start video element playback.
    * Includes progressive fallback constraints and clear error handling for device locks.
    */
+  const [devices, setDevices]               = useState([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState('')
+
+  // Enumerate video devices on mount or when permissions granted
+  const loadVideoDevices = useCallback(async () => {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return
+      const allDevices = await navigator.mediaDevices.enumerateDevices()
+      const videoInputs = allDevices.filter(d => d.kind === 'videoinput')
+      setDevices(videoInputs)
+      if (videoInputs.length > 0 && !selectedDeviceId) {
+        setSelectedDeviceId(videoInputs[0].deviceId)
+      }
+    } catch (e) {
+      console.warn('Could not enumerate devices:', e)
+    }
+  }, [selectedDeviceId])
+
+  useEffect(() => {
+    loadVideoDevices()
+  }, [loadVideoDevices])
+
+  /**
+   * Request webcam stream access and start video element playback.
+   * Includes device enumeration, specific device constraints, and multi-device fallback.
+   */
   const startCamera = useCallback(async () => {
     setError(null)
-    
+
     // Helper to stop any existing media stream tracks on element
     if (videoRef.current?.srcObject) {
       const existing = videoRef.current.srcObject
@@ -43,35 +69,62 @@ export default function LiveCameraPage() {
 
     try {
       let stream = null
+
+      // Strategy 1: Selected Device ID or Ideal 640x480
       try {
-        // Try preferred 640x480 resolution
+        const videoConstraint = selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId } }
+          : { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          video: videoConstraint,
           audio: false,
         })
       } catch (firstErr) {
-        // Fallback to basic video constraint if ideal constraints fail
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        // Strategy 2: Basic video constraint
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        } catch (secondErr) {
+          // Strategy 3: Iterate through all enumerated camera devices
+          const allDevs = await navigator.mediaDevices.enumerateDevices()
+          const vDevs = allDevs.filter(d => d.kind === 'videoinput')
+          for (const dev of vDevs) {
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: { deviceId: { exact: dev.deviceId } },
+                audio: false,
+              })
+              if (stream) {
+                setSelectedDeviceId(dev.deviceId)
+                break
+              }
+            } catch (devErr) {
+              continue
+            }
+          }
+          if (!stream) throw secondErr
+        }
       }
 
       if (videoRef.current && stream) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
         setIsStreaming(true)
+        loadVideoDevices()
         startInferenceLoop()
       }
     } catch (err) {
       if (err.name === 'NotReadableError' || err.name === 'TrackStartError' || err.message?.includes('in use') || err.message?.includes('Could not start')) {
-        setError('CAMERA_DEVICE_IN_USE: Another application (Zoom, Teams, Skype, or another browser tab) is currently using your webcam. Please close the other application or tab and click Start Camera again.')
+        setError('CAMERA_DEVICE_IN_USE: Another application (Zoom, Teams, Skype, or another browser tab) is currently using your webcam. Please close the other tab/app or select a different camera below and click Start Camera.')
       } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setError('CAMERA_PERMISSION_DENIED: Access to webcam was blocked. Please enable camera permissions in your browser address bar settings.')
+        setError('CAMERA_PERMISSION_DENIED: Access to webcam was blocked. Please enable camera permissions in your browser address bar.')
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setError('NO_CAMERA_FOUND: No camera device detected on your system. Please plug in a webcam.')
       } else {
         setError(`Camera error: ${err.message}`)
       }
     }
-  }, [])
+  }, [selectedDeviceId, loadVideoDevices])
 
   /**
    * Stop active webcam stream, clear interval timer, and reset overlay canvas.
@@ -262,7 +315,36 @@ export default function LiveCameraPage() {
               </div>
 
               {/* Controls */}
-              <div style={{ padding: '16px', display: 'flex', gap: '12px' }}>
+              <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {devices.length > 1 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                      SELECT_CAMERA_DEVICE
+                    </label>
+                    <select
+                      value={selectedDeviceId}
+                      onChange={(e) => {
+                        setSelectedDeviceId(e.target.value)
+                        if (isStreaming) {
+                          stopCamera()
+                          setTimeout(() => startCamera(), 300)
+                        }
+                      }}
+                      style={{
+                        padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                        background: 'var(--surface-darker)', border: '1px solid var(--border)',
+                        color: 'var(--text)', fontSize: '0.85rem', width: '100%',
+                      }}
+                    >
+                      {devices.map((d, i) => (
+                        <option key={d.deviceId || i} value={d.deviceId}>
+                          {d.label || `Camera Device ${i + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <button
                   className={`btn ${isStreaming ? 'btn--danger' : 'btn--primary'} w-full`}
                   style={{ justifyContent: 'center' }}
@@ -276,8 +358,21 @@ export default function LiveCameraPage() {
 
             {error && (
               <div className="card card--red mt-4 animate-fade-in-up">
-                <div style={{ color: 'var(--red)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-                  {error}
+                <div style={{ color: 'var(--red)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', marginBottom: '12px' }}>
+                  ⚠️ {error}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn--secondary"
+                    style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+                    onClick={() => {
+                      stopCamera()
+                      setTimeout(() => startCamera(), 400)
+                    }}
+                  >
+                    🔄 Release & Retry Camera
+                  </button>
                 </div>
               </div>
             )}
