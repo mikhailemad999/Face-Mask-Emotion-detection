@@ -86,13 +86,14 @@ if %errorlevel% neq 0 (
     echo   [OK] Python dependencies already installed.
 )
 
-:: Run migrations
-echo   Applying database migrations...
+:: Run migrations & model registration
+echo   Applying database migrations ^& registering models...
 pushd "%PROJECT_ROOT%\project\backend"
 python manage.py makemigrations detection --noinput >nul 2>&1
 python manage.py migrate --noinput >nul 2>&1
+python manage.py register_models >nul 2>&1
 popd
-echo   [OK] Migrations applied.
+echo   [OK] Migrations applied and ML models registered.
 echo.
 
 :: ── Step 5: Create and launch backend helper script ────────────────────────
